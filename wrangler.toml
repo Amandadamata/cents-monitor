@@ -1,0 +1,17 @@
+name = "cents-monitor"
+main = "src/worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[observability]
+enabled = true
+
+# Segredos (wrangler secret put): NTFY_TOPIC, NTFY_TOKEN, ALERT_EMAIL, ADMIN_KEY
+
+# criado com: npx wrangler kv namespace create STATE
+[[kv_namespaces]]
+binding = "STATE"
+id = "77d68e073907449e8c6967e9d095b0e6"

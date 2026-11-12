@@ -1,0 +1,47 @@
+name: watchdog
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Testes do parser
+        run: node --test test/
+
+      - name: Vigiar Cloudflare (e checar CISIA se ela parou)
+        env:
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: node backup/watchdog.mjs
+
+      # Salva o estado quando muda. Uma vez a cada 20 dias também grava um sinal
+      # de vida, porque o GitHub desliga agendamentos após 60 dias sem commits.
+      - name: Salvar estado
+        run: |
+          if [ ! -f state/keepalive.txt ] || [ $(( $(date +%s) - $(date -d "$(cat state/keepalive.txt)" +%s) )) -gt 1728000 ]; then
+            date -u +"%Y-%m-%dT%H:%M:%SZ" > state/keepalive.txt
+          fi
+          git config user.name "cents-monitor-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/
+          git diff --cached --quiet || (git commit -m "watchdog: atualiza estado [skip ci]" && git push)
