@@ -12,7 +12,13 @@ const STATE_FILE = new URL("../state/backup-state.json", import.meta.url);
 const STALE_MS = 15 * 60 * 1000;
 const UA = "Mozilla/5.0 (compatible; CEnT-seat-monitor/1.0; personal use, backup check)";
 
-const cfg = { ntfyTopic: process.env.NTFY_TOPIC, ntfyToken: process.env.NTFY_TOKEN || undefined, alertEmail: process.env.ALERT_EMAIL };
+const cfg = {
+  ntfyTopic: process.env.NTFY_TOPIC,
+  ntfyToken: process.env.NTFY_TOKEN || undefined,
+  alertEmail: process.env.ALERT_EMAIL,
+  telegramToken: process.env.TELEGRAM_BOT_TOKEN || undefined,
+  telegramChatId: process.env.TELEGRAM_CHAT_ID || undefined,
+};
 if (!cfg.ntfyTopic) throw new Error("NTFY_TOPIC não configurado");
 const notify = (m) => sendNotification(cfg, m);
 
@@ -54,7 +60,7 @@ if (w.healthy) {
       email: true,
     });
     console.log("alerta técnico:", JSON.stringify(r));
-    st.workerDown.alerted = r.push === 200;
+    st.workerDown.alerted = r.delivered === true;
   }
   const fetchPage = async (url) => {
     const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(30000) });

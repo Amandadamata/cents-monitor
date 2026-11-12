@@ -168,7 +168,7 @@ export async function runCheck({ state, now, fetchPage, notify, source = "cloudf
     }
     delivery.push(r);
     // Push da vaga não chegou ao ntfy? Desmarca para tentar de novo na próxima rodada.
-    if (retryKeys && r?.push !== 200) {
+    if (retryKeys && !(r?.delivered ?? r?.push === 200)) {
       for (const k of retryKeys) if (state.sessions[k]) state.sessions[k].open = false;
       logEvent(state, now, `falha ao enviar alerta de vaga, vou repetir: ${JSON.stringify(r)}`);
     }

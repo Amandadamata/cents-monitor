@@ -10,7 +10,13 @@ const UA = "Mozilla/5.0 (compatible; CEnT-seat-monitor/1.0; personal use, 1 req/
 const HEARTBEAT_MS = 5 * 60 * 1000;
 
 function cfg(env) {
-  return { ntfyTopic: env.NTFY_TOPIC, ntfyToken: env.NTFY_TOKEN, alertEmail: env.ALERT_EMAIL };
+  return {
+    ntfyTopic: env.NTFY_TOPIC,
+    ntfyToken: env.NTFY_TOKEN,
+    alertEmail: env.ALERT_EMAIL,
+    telegramToken: env.TELEGRAM_BOT_TOKEN,
+    telegramChatId: env.TELEGRAM_CHAT_ID,
+  };
 }
 
 async function fetchPage(url) {
@@ -86,6 +92,19 @@ export default {
       return json(r);
     }
     if (url.pathname === "/run-now") return json(await check(env));
+
+    // Lista as conversas que mandaram mensagem ao bot (para descobrir o chat_id sem expor o token).
+    if (url.pathname === "/telegram-chats") {
+      if (!env.TELEGRAM_BOT_TOKEN) return json({ error: "TELEGRAM_BOT_TOKEN não configurado" }, 400);
+      const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates`);
+      const d = await r.json();
+      const chats = {};
+      for (const u of d.result || []) {
+        const c = (u.message || u.my_chat_member || {}).chat;
+        if (c) chats[c.id] = { type: c.type, first_name: c.first_name, username: c.username };
+      }
+      return json({ ok: d.ok, chats, configuredChatId: env.TELEGRAM_CHAT_ID || null });
+    }
     return json({ error: "not found" }, 404);
   },
 };
