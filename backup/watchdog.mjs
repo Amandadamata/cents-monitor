@@ -12,12 +12,13 @@ const STATE_FILE = new URL("../state/backup-state.json", import.meta.url);
 const STALE_MS = 15 * 60 * 1000;
 const UA = "Mozilla/5.0 (compatible; CEnT-seat-monitor/1.0; personal use, backup check)";
 
+const clean = (v) => (v ? v.replace(/\s+/g, "") : undefined);
 const cfg = {
   ntfyTopic: process.env.NTFY_TOPIC,
-  ntfyToken: process.env.NTFY_TOKEN || undefined,
+  ntfyToken: clean(process.env.NTFY_TOKEN),
   alertEmail: process.env.ALERT_EMAIL,
-  telegramToken: process.env.TELEGRAM_BOT_TOKEN || undefined,
-  telegramChatId: process.env.TELEGRAM_CHAT_ID || undefined,
+  telegramToken: clean(process.env.TELEGRAM_BOT_TOKEN),
+  telegramChatId: clean(process.env.TELEGRAM_CHAT_ID),
 };
 if (!cfg.ntfyTopic) throw new Error("NTFY_TOPIC não configurado");
 const notify = (m) => sendNotification(cfg, m);
@@ -38,6 +39,17 @@ async function workerStatus() {
   } catch (e) {
     return { healthy: false, why: `Worker inacessível: ${e.message}` };
   }
+}
+
+if (process.env.SEND_TEST === "true") {
+  const r = await notify({
+    title: "🧪 TESTE — vigia de reserva (GitHub)",
+    message: `Teste enviado pelo GitHub Actions (${now.toISOString()}). Se chegou, o monitor de reserva também consegue te avisar.`,
+    priority: 4,
+    tags: ["test_tube"],
+    email: true,
+  });
+  console.log("teste de notificação:", JSON.stringify(r));
 }
 
 const w = await workerStatus();

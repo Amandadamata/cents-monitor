@@ -9,13 +9,16 @@ import { sendNotification } from "./notify.js";
 const UA = "Mozilla/5.0 (compatible; CEnT-seat-monitor/1.0; personal use, 1 req/min)";
 const HEARTBEAT_MS = 5 * 60 * 1000;
 
+// Tokens colados no terminal às vezes vêm com espaço ou quebra de linha.
+const clean = (v) => (v ? String(v).replace(/\s+/g, "") : v);
+
 function cfg(env) {
   return {
     ntfyTopic: env.NTFY_TOPIC,
-    ntfyToken: env.NTFY_TOKEN,
+    ntfyToken: clean(env.NTFY_TOKEN),
     alertEmail: env.ALERT_EMAIL,
-    telegramToken: env.TELEGRAM_BOT_TOKEN,
-    telegramChatId: env.TELEGRAM_CHAT_ID,
+    telegramToken: clean(env.TELEGRAM_BOT_TOKEN),
+    telegramChatId: clean(env.TELEGRAM_CHAT_ID),
   };
 }
 
@@ -96,14 +99,17 @@ export default {
     // Lista as conversas que mandaram mensagem ao bot (para descobrir o chat_id sem expor o token).
     if (url.pathname === "/telegram-chats") {
       if (!env.TELEGRAM_BOT_TOKEN) return json({ error: "TELEGRAM_BOT_TOKEN não configurado" }, 400);
-      const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates`);
+      const t = clean(env.TELEGRAM_BOT_TOKEN);
+      const r = await fetch(`https://api.telegram.org/bot${t}/getUpdates`);
       const d = await r.json();
       const chats = {};
       for (const u of d.result || []) {
         const c = (u.message || u.my_chat_member || {}).chat;
         if (c) chats[c.id] = { type: c.type, first_name: c.first_name, username: c.username };
       }
-      return json({ ok: d.ok, chats, configuredChatId: env.TELEGRAM_CHAT_ID || null });
+      // Diagnóstico sem revelar o token: tamanho e se tem o formato "números:letras".
+      const shape = { length: t.length, looksValid: /^\d{6,12}:[A-Za-z0-9_-]{30,40}$/.test(t), hasSpaces: /\s/.test(t) };
+      return json({ ok: d.ok, description: d.description, tokenShape: shape, chats, configuredChatId: env.TELEGRAM_CHAT_ID || null });
     }
     return json({ error: "not found" }, 404);
   },
