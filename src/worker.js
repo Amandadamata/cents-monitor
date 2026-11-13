@@ -46,14 +46,15 @@ async function notifyWithRelay(env, msg) {
 async function drainOutbox(env) {
   const box = (await env.STATE.get("outbox", "json")) || [];
   if (!box.length) return;
-  const rest = [];
-  for (const it of box) {
+  // Máx. 10 por rodada: o plano grátis permite 50 requisições externas por execução.
+  const rest = box.slice(10);
+  for (const it of box.slice(0, 10)) {
     if (Date.now() - new Date(it.at) > 24 * 3600 * 1000) continue;
     const msg = { ...it.msg, email: it.needEmail };
     const r = await sendNotification({ ...cfg(env), telegramToken: undefined, skipPush: !it.needPush }, msg);
     const needPush = it.needPush && r.push !== 200;
     const needEmail = it.needEmail && r.email !== 200;
-    if (needPush || needEmail) rest.push({ ...it, needPush, needEmail, tries: (it.tries || 0) + 1 });
+    if (needPush || needEmail) rest.unshift({ ...it, needPush, needEmail, tries: (it.tries || 0) + 1 });
   }
   if (JSON.stringify(rest) !== JSON.stringify(box)) await env.STATE.put("outbox", JSON.stringify(rest));
 }
