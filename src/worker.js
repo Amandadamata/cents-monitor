@@ -42,6 +42,22 @@ async function notifyWithRelay(env, msg) {
   return r;
 }
 
+// A cada minuto, tenta de novo o que está na fila (o ntfy às vezes aceita a Cloudflare).
+async function drainOutbox(env) {
+  const box = (await env.STATE.get("outbox", "json")) || [];
+  if (!box.length) return;
+  const rest = [];
+  for (const it of box) {
+    if (Date.now() - new Date(it.at) > 24 * 3600 * 1000) continue;
+    const msg = { ...it.msg, email: it.needEmail };
+    const r = await sendNotification({ ...cfg(env), telegramToken: undefined, skipPush: !it.needPush }, msg);
+    const needPush = it.needPush && r.push !== 200;
+    const needEmail = it.needEmail && r.email !== 200;
+    if (needPush || needEmail) rest.push({ ...it, needPush, needEmail, tries: (it.tries || 0) + 1 });
+  }
+  if (JSON.stringify(rest) !== JSON.stringify(box)) await env.STATE.put("outbox", JSON.stringify(rest));
+}
+
 function meaningful(s) {
   // Tudo menos contadores/horários: se isso mudou, vale gravar já.
   const { checks, lastCheck, lastOk, lastSource, lastSaved, ...rest } = s;
@@ -72,7 +88,7 @@ function json(obj, status = 200) {
 
 export default {
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(check(env));
+    ctx.waitUntil(check(env).then(() => drainOutbox(env)));
   },
 
   async fetch(request, env) {
