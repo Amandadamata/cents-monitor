@@ -95,13 +95,26 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // Saúde, para o UptimeRobot: 200 se leu o CISIA com sucesso nos últimos 12 min, senão 503.
+    // (O estado é gravado pelo menos a cada 5 min, então 12 min = ~2 gravações perdidas.)
+    if (url.pathname === "/health") {
+      const s = (await env.STATE.get("state", "json")) || emptyState();
+      const okAge = s.lastOk ? (Date.now() - new Date(s.lastOk)) / 60000 : Infinity;
+      const healthy = okAge <= 12;
+      return new Response(healthy ? `OK - ultima leitura do CISIA ha ${Math.round(okAge)} min\n` : `DOWN - ultima leitura do CISIA: ${s.lastOk || "nunca"}\n`, {
+        status: healthy ? 200 : 503,
+        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+      });
+    }
+
     // Status público (sem segredos): última checagem, sessões CENT@CASA vistas e registro.
     if (url.pathname === "/" || url.pathname === "/status") {
       const s = (await env.STATE.get("state", "json")) || emptyState();
       const ageMin = s.lastSaved ? Math.round((Date.now() - new Date(s.lastSaved)) / 60000) : null;
+      const okAgeMin = s.lastOk ? Math.round((Date.now() - new Date(s.lastOk)) / 60000) : null;
       return json({
         monitor: "CEnT@CASA seat monitor",
-        healthy: ageMin !== null && ageMin <= 12 && Object.keys(s.failing).length === 0,
+        healthy: okAgeMin !== null && okAgeMin <= 12,
         minutesSinceLastSave: ageMin,
         lastCheck: s.lastCheck,
         lastOk: s.lastOk,
