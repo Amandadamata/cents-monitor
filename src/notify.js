@@ -40,7 +40,7 @@ export async function sendNotification(cfg, msg, fetchImpl = fetch) {
   const results = {};
 
   const tasks = [];
-  if (cfg.ntfyTopic) {
+  if (cfg.ntfyTopic && !cfg.skipPush) {
     tasks.push(
       safe(async () => {
         const r = await fetchImpl(server, { method: "POST", headers, body: JSON.stringify({ ...base, topic: cfg.ntfyTopic }) });

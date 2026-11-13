@@ -27,6 +27,21 @@ async function fetchPage(url) {
   return { status: res.status, text: await res.text() };
 }
 
+// O ntfy.sh recusa conexões vindas da Cloudflare (erro 522/429). O Telegram sai direto daqui;
+// o que falhar no ntfy (push e e-mail) vai para a fila "outbox", que o vigia do GitHub entrega.
+async function notifyWithRelay(env, msg) {
+  const r = await sendNotification(cfg(env), msg);
+  const needPush = r.push !== 200;
+  const needEmail = !!msg.email && r.email !== 200;
+  if (needPush || needEmail) {
+    const box = (await env.STATE.get("outbox", "json")) || [];
+    box.push({ id: crypto.randomUUID(), at: new Date().toISOString(), needPush, needEmail, msg });
+    await env.STATE.put("outbox", JSON.stringify(box.slice(-20)));
+    r.relayedViaGitHub = { needPush, needEmail };
+  }
+  return r;
+}
+
 function meaningful(s) {
   // Tudo menos contadores/horários: se isso mudou, vale gravar já.
   const { checks, lastCheck, lastOk, lastSource, lastSaved, ...rest } = s;
@@ -40,7 +55,7 @@ async function check(env) {
     state: prev,
     now,
     fetchPage,
-    notify: (m) => sendNotification(cfg(env), m),
+    notify: (m) => notifyWithRelay(env, m),
     source: "cloudflare",
   });
   const due = !prev.lastSaved || now - new Date(prev.lastSaved) >= HEARTBEAT_MS;
@@ -84,7 +99,7 @@ export default {
     if (request.headers.get("x-admin-key") !== env.ADMIN_KEY || !env.ADMIN_KEY) return json({ error: "unauthorized" }, 401);
 
     if (url.pathname === "/test-alert") {
-      const r = await sendNotification(cfg(env), {
+      const r = await notifyWithRelay(env, {
         title: "🧪 TESTE — Monitor CEnT@CASA",
         message: `Teste de notificação (${new Date().toISOString()}).\nSe você está lendo isto no iPhone, no Mac e no e-mail, os alertas estão funcionando.\nUm alerta real terá o título: 🚨 URGENTE! ABRIU VAGA CEnT@CASA — RESERVE AGORA!`,
         priority: 5,
@@ -95,6 +110,15 @@ export default {
       return json(r);
     }
     if (url.pathname === "/run-now") return json(await check(env));
+
+    if (url.pathname === "/outbox") return json({ items: (await env.STATE.get("outbox", "json")) || [] });
+    if (url.pathname === "/outbox-ack" && request.method === "POST") {
+      const { ids = [] } = await request.json();
+      const box = (await env.STATE.get("outbox", "json")) || [];
+      const rest = box.filter((i) => !ids.includes(i.id));
+      if (rest.length !== box.length) await env.STATE.put("outbox", JSON.stringify(rest));
+      return json({ removed: box.length - rest.length, remaining: rest.length });
+    }
 
     // Lista as conversas que mandaram mensagem ao bot (para descobrir o chat_id sem expor o token).
     if (url.pathname === "/telegram-chats") {

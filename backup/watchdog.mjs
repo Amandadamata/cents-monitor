@@ -52,6 +52,30 @@ if (process.env.SEND_TEST === "true") {
   console.log("teste de notificação:", JSON.stringify(r));
 }
 
+// Entrega o que a Cloudflare não conseguiu mandar pelo ntfy (push e e-mail).
+async function relayOutbox() {
+  if (!process.env.ADMIN_KEY) return;
+  const h = { "x-admin-key": process.env.ADMIN_KEY, "Content-Type": "application/json" };
+  try {
+    const { items = [] } = await (await fetch(`${process.env.WORKER_URL}/outbox`, { headers: h, signal: AbortSignal.timeout(20000) })).json();
+    const done = [];
+    for (const it of items) {
+      if (now - new Date(it.at) > 24 * 3600 * 1000) { done.push(it.id); continue; }
+      const msg = { ...it.msg, email: it.needEmail, message: `${it.msg.message}\n\n(Entregue pelo vigia do GitHub. Enviado pela Cloudflare em ${it.at}.)` };
+      const r = await sendNotification({ ...cfg, telegramToken: undefined, skipPush: !it.needPush }, msg);
+      console.log("outbox", it.id, JSON.stringify(r));
+      if ((!it.needPush || r.push === 200) && (!it.needEmail || r.email === 200)) done.push(it.id);
+    }
+    if (done.length) {
+      const a = await fetch(`${process.env.WORKER_URL}/outbox-ack`, { method: "POST", headers: h, body: JSON.stringify({ ids: done }) });
+      console.log("outbox ack:", await a.text());
+    } else console.log(`outbox: ${items.length} pendente(s)`);
+  } catch (e) {
+    console.log("outbox erro:", e.message);
+  }
+}
+await relayOutbox();
+
 const w = await workerStatus();
 console.log(`[${now.toISOString()}] worker healthy=${w.healthy} ${w.why || `lastOk=${w.s.lastOk} checks=${w.s.checks}`}`);
 

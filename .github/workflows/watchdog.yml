@@ -41,6 +41,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SEND_TEST: ${{ inputs.send_test }}
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
         run: node backup/watchdog.mjs
 
       # Salva o estado quando muda. Uma vez a cada 20 dias também grava um sinal
