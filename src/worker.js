@@ -5,6 +5,8 @@
 
 import { runCheck, emptyState } from "./core.js";
 import { sendNotification } from "./notify.js";
+import { CALENDARS, parseCalendar } from "./parser.js";
+import { buildReport } from "./report.js";
 
 const UA = "Mozilla/5.0 (compatible; CEnT-seat-monitor/1.0; personal use, 1 req/min)";
 const HEARTBEAT_MS = 5 * 60 * 1000;
@@ -83,13 +85,41 @@ async function check(env) {
   return state;
 }
 
+// Conferência 3x por dia (cron "0 0,12,18 * * *" = 21h, 9h e 15h em Brasília).
+// Lê o CISIA ao vivo, confere o estado e manda a mensagem-teste. E-mail só na das 21h
+// (o ntfy grátis permite 5 e-mails/dia) ou quando houver problema.
+async function report(env, { email } = {}) {
+  const now = new Date();
+  const [state, outbox, last] = await Promise.all([
+    env.STATE.get("state", "json").then((s) => s || emptyState()),
+    env.STATE.get("outbox", "json").then((o) => o || []),
+    env.STATE.get("lastReport", "json"),
+  ]);
+  const live = {};
+  for (const cal of CALENDARS) {
+    const label = cal.lingua === "inglese" ? "Prova em inglês" : "Prova em italiano";
+    try {
+      const res = await fetchPage(cal.url);
+      live[cal.lingua] = { label, ...(res.status === 200 ? parseCalendar(res.text) : { ok: false, error: `HTTP ${res.status}` }) };
+    } catch (e) {
+      live[cal.lingua] = { label, ok: false, error: String(e?.message || e) };
+    }
+  }
+  const r = buildReport({ state, outbox, now, last, live });
+  const sendEmail = email ?? (now.getUTCHours() === 0 || !r.ok);
+  const delivery = await notifyWithRelay(env, { ...r.msg, email: sendEmail });
+  await env.STATE.put("lastReport", JSON.stringify({ at: now.toISOString(), checks: state.checks || 0, ok: r.ok, problems: r.problems, delivery }));
+  return { ...r, delivery };
+}
+
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj, null, 2), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 }
 
 export default {
-  async scheduled(_event, env, ctx) {
-    ctx.waitUntil(check(env).then(() => drainOutbox(env)));
+  async scheduled(event, env, ctx) {
+    if (event.cron === "0 0,12,18 * * *") ctx.waitUntil(report(env));
+    else ctx.waitUntil(check(env).then(() => drainOutbox(env)));
   },
 
   async fetch(request, env) {
@@ -140,6 +170,7 @@ export default {
       return json(r);
     }
     if (url.pathname === "/run-now") return json(await check(env));
+    if (url.pathname === "/report-now") return json(await report(env, { email: url.searchParams.get("email") === "1" }));
 
     if (url.pathname === "/outbox") return json({ items: (await env.STATE.get("outbox", "json")) || [] });
     if (url.pathname === "/outbox-ack" && request.method === "POST") {

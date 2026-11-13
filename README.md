@@ -10,6 +10,8 @@ Monitor pessoal de vagas **CEnT@CASA** (exame CEnT-S do CISIA).
 - **Vigia de reserva** (GitHub Actions, `backup/watchdog.mjs`): a cada ~10 min confere se o
   Worker está saudável. Se não estiver, avisa e passa a checar o CISIA no lugar dele.
 - **Alertas técnicos**: site fora do ar por mais de 10 min ou mudança de formato da página.
+- **Conferência 3x por dia** (9h, 15h e 21h de Brasília, `src/report.js`): lê o CISIA ao vivo, confere
+  checagens, falhas e fila, e manda uma mensagem-teste ✅ (ou ⚠️ se achar problema). E-mail só às 21h.
 - **UptimeRobot** checa `/health` a cada 5 min e manda e-mail se o monitor parar.
 
 Não reserva, não paga e não guarda senhas. Uma requisição por minuto por calendário.

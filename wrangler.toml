@@ -4,7 +4,8 @@ compatibility_date = "2026-11-01"
 workers_dev = true
 
 [triggers]
-crons = ["* * * * *"]
+# 1) checagem a cada minuto  2) conferência às 9h, 15h e 21h de Brasília (12, 18 e 00 UTC)
+crons = ["* * * * *", "0 0,12,18 * * *"]
 
 [observability]
 enabled = true
